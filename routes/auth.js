@@ -27,8 +27,15 @@ router.post('/login', (req, res) => {
     if (results.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
 
     const user = results[0];
-    res.json({ role: user.role });
+
+    // Send back full user details needed for frontend
+    res.json({
+      role: user.role,
+      user_id: user.id,
+      email: user.email,
+    });
   });
 });
+
 
 module.exports = router;
