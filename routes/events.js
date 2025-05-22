@@ -30,7 +30,7 @@ router.post('/register-event', (req, res) => {
 });
 // Propose Event
 router.post('/propose-event', (req, res) => {
-  const { title, description, date, club_name } = req.body;
+  const { title, description, date, club_name, proposed_by } = req.body;
 
   const getClubIdSql = 'SELECT id FROM clubs WHERE name = ?';
   db.query(getClubIdSql, [club_name], (err, clubResult) => {
@@ -38,11 +38,15 @@ router.post('/propose-event', (req, res) => {
       console.error('Club lookup failed', err);
       return res.status(400).json({ error: 'Invalid club name' });
     }
-    
-    const club_id = clubResult[0].id;
-    const insertEventSql = 'INSERT INTO events (title, description, date, club_id, status) VALUES (?, ?, ?, ?, "pending")';
 
-    db.query(insertEventSql, [title, description, date, club_id], (err) => {
+    const club_id = clubResult[0].id;
+
+    const insertEventSql = `
+      INSERT INTO events (title, description, date, club_id, status, proposed_by)
+      VALUES (?, ?, ?, ?, "pending", ?)
+    `;
+
+    db.query(insertEventSql, [title, description, date, club_id, proposed_by], (err) => {
       if (err) {
         console.error('Error inserting event:', err);
         return res.status(500).json({ error: 'Event insert failed' });
@@ -54,7 +58,7 @@ router.post('/propose-event', (req, res) => {
           console.error('Error fetching admins:', err);
           return res.status(500).json({ error: 'Notification error' });
         }
-        
+
         const message = `New event proposed: "${title}"`;
         const notifySql = 'INSERT INTO notifications (receiver_email, message) VALUES ?';
         const values = admins.map(admin => [admin.email, message]);
@@ -64,7 +68,7 @@ router.post('/propose-event', (req, res) => {
             console.error('Failed to notify admins:', err);
             return res.status(500).json({ error: 'Notification insert failed' });
           }
-          
+
           res.json({ message: 'Event proposal submitted and admins notified' });
         });
       });
@@ -91,27 +95,24 @@ router.post('/admin/event-decision', (req, res) => {
   db.query(updateSql, [decision, eventId], (err) => {
     if (err) return res.status(500).json({ error: 'Update failed' });
 
-    // Get club_head email from events table
-    const getClubHeadSql = `
-    SELECT u.email, e.title FROM events e
-      JOIN users u ON e.club_id = u.id
-      WHERE e.id = ?
-    `;
-    db.query(getClubHeadSql, [eventId], (err, result) => {
-      if (err) return res.status(500).json({ error: 'Email fetch failed' });
+    // Fetch proposed_by from the event
+    const getEmailSql = 'SELECT proposed_by, title FROM events WHERE id = ?';
+    db.query(getEmailSql, [eventId], (err, result) => {
+      if (err || result.length === 0) {
+        console.error('Club head fetch failed:', err);
+        return res.status(500).json({ error: 'Club head not found' });
+      }
 
-      const receiver_email = result[0]?.email;
-      const eventTitle = result[0]?.title;
-      if (!receiver_email) return res.status(404).json({ error: 'Club head email not found' });
-      
+      const receiver_email = result[0].proposed_by;
+      const eventTitle = result[0].title;
+
       const clubMessage = `Your event "${eventTitle}" was ${decision}.`;
-      
+
       // Notify Club Head
       const notifyClubSql = 'INSERT INTO notifications (receiver_email, message) VALUES (?, ?)';
       db.query(notifyClubSql, [receiver_email, clubMessage], (err) => {
-        if (err) return res.status(500).json({ error: 'Notification failed for club head' });
-        
-        // 🧨 Notify all students if approved
+        if (err) return res.status(500).json({ error: 'Notification to club head failed' });
+
         if (decision === 'approved') {
           const getStudentEmails = 'SELECT email FROM users WHERE role = "student"';
           db.query(getStudentEmails, (err, studentResults) => {
@@ -120,7 +121,7 @@ router.post('/admin/event-decision', (req, res) => {
             const insertNotifications = studentResults.map(student => {
               return [student.email, `New event "${eventTitle}" is now open for registration!`];
             });
-            
+
             const notifyStudentsSql = 'INSERT INTO notifications (receiver_email, message) VALUES ?';
             db.query(notifyStudentsSql, [insertNotifications], (err) => {
               if (err) return res.status(500).json({ error: 'Student notifications failed' });
@@ -135,6 +136,7 @@ router.post('/admin/event-decision', (req, res) => {
     });
   });
 });
+
 
 router.get('/notifications/:email', (req, res) => {
   const email = req.params.email;
