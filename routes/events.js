@@ -150,6 +150,19 @@ router.get('/notifications/:email', (req, res) => {
     res.json(results);
   });
 });
+// Clear notifications for a user
+router.delete('/notifications/:email', (req, res) => {
+  const email = req.params.email;
+  const sql = 'DELETE FROM notifications WHERE receiver_email = ?';
+  db.query(sql, [email], (err, result) => {
+    if (err) {
+      console.error('Failed to delete notifications:', err);
+      return res.status(500).json({ error: 'Could not delete notifications' });
+    }
+    res.json({ message: 'Notifications cleared successfully' });
+  });
+});
+
 // Get single club info
 // Get all clubs
 router.get('/clubs', (req, res) => {
