@@ -2,12 +2,40 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 
-// Register Route
+// ✅ Allowed departments for admin registration
+const validDepartments = [
+  'cse',
+  'it',
+  'ece',
+  'eee',
+  'mech',
+  'civil',
+  'mct',
+  'csbs',
+  'mme',
+  'et' // csm and csd are treated as et
+];
+
+// ✅ Email validation helper
+const isValidAdminEmail = (email) => {
+  const regex = /^[^@]+_([a-z]+)@mgit\.ac\.in$/i;
+  const match = email.match(regex);
+  if (!match) return false;
+
+  const dept = match[1].toLowerCase();
+  return validDepartments.includes(dept);
+};
+
+// ✅ Register Route
 router.post('/register', (req, res) => {
   const { name, email, password, role, reg_id } = req.body;
 
   if (!email.endsWith('@mgit.ac.in')) {
     return res.status(400).json({ error: 'Only @mgit.ac.in emails allowed' });
+  }
+
+  if (role === 'admin' && !isValidAdminEmail(email)) {
+    return res.status(400).json({ error: 'Invalid department for admin registration.' });
   }
 
   const sql = 'INSERT INTO users (name, email, password, role, reg_id) VALUES (?, ?, ?, ?, ?)';
@@ -17,7 +45,7 @@ router.post('/register', (req, res) => {
   });
 });
 
-// Login Route
+// ✅ Login Route
 router.post('/login', (req, res) => {
   const { email, password } = req.body;
 
@@ -28,7 +56,6 @@ router.post('/login', (req, res) => {
 
     const user = results[0];
 
-    // Send back full user details needed for frontend
     res.json({
       role: user.role,
       user_id: user.id,
@@ -36,6 +63,5 @@ router.post('/login', (req, res) => {
     });
   });
 });
-
 
 module.exports = router;
